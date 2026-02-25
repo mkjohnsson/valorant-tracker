@@ -1,0 +1,20 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, pi-valorant]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy
+        run: |
+          mkdir -p ~/apps/valorant-tracker
+          cp -r server public package.json ~/apps/valorant-tracker/
+          cd ~/apps/valorant-tracker
+          npm install --omit=dev
+          pm2 restart valorant-tracker || pm2 start server/index.js --name valorant-tracker --node-args="--env-file=.env"
+          pm2 save
