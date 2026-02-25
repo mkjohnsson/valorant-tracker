@@ -593,55 +593,32 @@ function renderResults(data, name, tag) {
     rankEl.innerHTML = `<div style="color:var(--muted);font-size:13px">Ingen rankad data</div>`;
   }
 
-  // ── Win rate + KDA from matches ──
-  const matchList = matches?.data || [];
-  let wins = 0, totalK = 0, totalD = 0, totalA = 0, matchCount = 0;
-
-  for (const m of matchList) {
-    const me = findMe(m, name, tag);
-    if (!me) continue;
-    matchCount++;
-    if (isWin(m, me)) wins++;
-    totalK += me.stats?.kills ?? 0;
-    totalD += me.stats?.deaths ?? 1;
-    totalA += me.stats?.assists ?? 0;
-  }
+  // ── Win rate + KDA from matches (pre-processed by server) ──
+  const matchList = Array.isArray(matches) ? matches : [];
+  const played = matchList.filter(m => m.me);
+  const wins = played.filter(m => m.won).length;
+  const totalK = played.reduce((s, m) => s + (m.me?.kills ?? 0), 0);
+  const totalD = played.reduce((s, m) => s + (m.me?.deaths ?? 1), 0);
+  const totalA = played.reduce((s, m) => s + (m.me?.assists ?? 0), 0);
+  const matchCount = played.length;
 
   document.getElementById('winRate').textContent = matchCount ? `${wins}/${matchCount}` : '—';
   document.getElementById('winRateSub').textContent = matchCount ? `av ${matchCount} matcher` : '';
 
   if (matchCount > 0) {
-    const avgK = (totalK / matchCount).toFixed(1);
-    const avgD = (totalD / matchCount).toFixed(1);
-    const avgA = (totalA / matchCount).toFixed(1);
-    document.getElementById('avgKda').textContent = `${avgK}/${avgD}/${avgA}`;
+    document.getElementById('avgKda').textContent =
+      `${(totalK/matchCount).toFixed(1)}/${(totalD/matchCount).toFixed(1)}/${(totalA/matchCount).toFixed(1)}`;
   } else {
     document.getElementById('avgKda').textContent = '—';
   }
 
   // ── Rank history chart ──
-  renderChart(mmrHistory?.data || []);
+  renderChart(mmrHistory?.data?.history || []);
 
   // ── Matches list ──
-  renderMatches(matchList, name, tag);
+  renderMatches(matchList);
 
   document.getElementById('results').style.display = 'block';
-}
-
-function findMe(match, name, tag) {
-  const players = match?.players?.all_players || match?.players || [];
-  return players.find(p =>
-    p.name?.toLowerCase() === name.toLowerCase() &&
-    p.tag?.toLowerCase() === tag.toLowerCase()
-  );
-}
-
-function isWin(match, me) {
-  if (!me?.team) return false;
-  const teams = match?.teams;
-  if (!teams) return false;
-  const myTeam = me.team.toLowerCase();
-  return teams[myTeam]?.has_won === true;
 }
 
 function renderChart(history) {
@@ -704,41 +681,29 @@ function renderChart(history) {
   });
 }
 
-function renderMatches(matchList, name, tag) {
+function renderMatches(matchList) {
   const container = document.getElementById('matchesList');
   container.innerHTML = '';
 
-  if (!matchList.length) {
+  const played = matchList.filter(m => m.me);
+  if (!played.length) {
     container.innerHTML = '<div style="color:var(--muted);font-size:14px;padding:16px">Inga rankade matcher hittades</div>';
     return;
   }
 
-  for (const m of matchList) {
-    const me = findMe(m, name, tag);
-    if (!me) continue;
+  for (const m of played) {
+    const { won, rr_change, me, map, started_at } = m;
 
-    const won = isWin(m, me);
-    const kills = me.stats?.kills ?? 0;
-    const deaths = me.stats?.deaths ?? 0;
-    const assists = me.stats?.assists ?? 0;
-
-    const mapName = m.metadata?.map || '?';
-    const agentName = me.character || me.agent?.name || '?';
-    const agentIcon = me.assets?.agent?.small || me.agent?.assets?.small || '';
-
-    // Date
     let dateStr = '';
-    if (m.metadata?.game_start) {
-      const d = new Date(m.metadata.game_start * 1000);
+    if (started_at) {
+      const d = new Date(started_at);
       dateStr = d.toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' });
     }
 
-    // RR delta
-    const rrChange = me.stats?.mmr_change_to_last_game ?? null;
     let rrHtml = '';
-    if (rrChange != null) {
-      const cls = rrChange >= 0 ? 'pos' : 'neg';
-      rrHtml = `<div class="rr-delta ${cls}">${rrChange >= 0 ? '+' : ''}${rrChange}</div>`;
+    if (rr_change != null) {
+      const cls = rr_change >= 0 ? 'pos' : 'neg';
+      rrHtml = `<div class="rr-delta ${cls}">${rr_change >= 0 ? '+' : ''}${rr_change}</div>`;
     } else {
       rrHtml = '<div class="rr-delta" style="color:var(--muted)">—</div>';
     }
@@ -746,17 +711,17 @@ function renderMatches(matchList, name, tag) {
     const row = document.createElement('div');
     row.className = `match-row ${won ? 'win' : 'loss'}`;
     row.innerHTML = `
-      ${agentIcon
-        ? `<img class="agent-icon" src="${agentIcon}" alt="${agentName}" title="${agentName}" onerror="this.style.display='none'" />`
+      ${me.agent_icon
+        ? `<img class="agent-icon" src="${me.agent_icon}" alt="${me.character}" title="${me.character}" onerror="this.style.display='none'" />`
         : `<div class="agent-icon" style="display:flex;align-items:center;justify-content:center;font-size:20px">🎮</div>`
       }
       <div class="match-main">
-        <div class="map-name">${mapName}</div>
-        <div class="match-date">${agentName}${dateStr ? ' · ' + dateStr : ''}</div>
+        <div class="map-name">${map}</div>
+        <div class="match-date">${me.character}${dateStr ? ' · ' + dateStr : ''}</div>
       </div>
       <div class="result-badge ${won ? 'win' : 'loss'}">${won ? 'WIN' : 'LOSS'}</div>
       <div class="kda">
-        ${kills}/${deaths}/${assists}
+        ${me.kills}/${me.deaths}/${me.assists}
         <div class="kda-label">K/D/A</div>
       </div>
       ${rrHtml}
