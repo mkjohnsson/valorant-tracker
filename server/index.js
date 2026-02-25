@@ -69,7 +69,7 @@ async function getPlayerData(region, name, tag) {
   const [accountRes, mmrRes, mmrHistoryRes, matchesRes] = await Promise.allSettled([
     fetch(`${HENRIK_BASE}/v2/account/${encodedName}/${encodedTag}`, { headers }),
     fetch(`${HENRIK_BASE}/v3/mmr/${region}/pc/${encodedName}/${encodedTag}`, { headers }),
-    fetch(`${HENRIK_BASE}/v2/mmr-history/${region}/pc/${encodedName}/${encodedTag}`, { headers }),
+    fetch(`${HENRIK_BASE}/v2/mmr-history/${region}/pc/${encodedName}/${encodedTag}?size=15`, { headers }),
     fetch(`${HENRIK_BASE}/v4/matches/${region}/pc/${encodedName}/${encodedTag}?mode=competitive&size=10`, { headers }),
   ]);
 
@@ -84,12 +84,17 @@ async function getPlayerData(region, name, tag) {
     return r.json();
   }
 
-  const [account, mmr, mmrHistory, matches] = await Promise.all([
+  const [account, mmrRaw, mmrHistory, matches] = await Promise.all([
     parse(accountRes),
     parse(mmrRes),
     parse(mmrHistoryRes),
     parse(matchesRes),
   ]);
+
+  // Strip seasonal history from mmr — we only need current rank
+  const mmr = mmrRaw?.data
+    ? { ...mmrRaw, data: { current: mmrRaw.data.current, peak: mmrRaw.data.peak } }
+    : mmrRaw;
 
   const data = { account, mmr, mmrHistory, matches };
 
