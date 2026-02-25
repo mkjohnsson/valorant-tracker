@@ -63,71 +63,6 @@
       padding: 32px 20px 60px;
     }
 
-    /* ── Search ── */
-    .search-box {
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 24px;
-      margin-bottom: 32px;
-    }
-
-    .search-box h2 {
-      font-size: 14px;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 16px;
-    }
-
-    .search-row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .search-row input {
-      flex: 1;
-      min-width: 200px;
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      color: var(--text);
-      font-size: 16px;
-      padding: 10px 14px;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-
-    .search-row input:focus { border-color: var(--red); }
-
-    .search-row select {
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      color: var(--text);
-      font-size: 15px;
-      padding: 10px 12px;
-      outline: none;
-      cursor: pointer;
-    }
-
-    .search-row button {
-      background: var(--red);
-      border: none;
-      border-radius: 4px;
-      color: #fff;
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: 1px;
-      padding: 10px 24px;
-      cursor: pointer;
-      text-transform: uppercase;
-      transition: background 0.2s;
-    }
-
-    .search-row button:hover { background: var(--red-dark); }
-    .search-row button:disabled { opacity: 0.5; cursor: not-allowed; }
 
     /* ── Error ── */
     .error-msg {
@@ -389,15 +324,6 @@
     /* ── Results ── */
     #results { display: none; }
 
-    /* ── Empty state ── */
-    .empty-hint {
-      text-align: center;
-      padding: 60px 20px;
-      color: var(--muted);
-    }
-
-    .empty-hint .big-icon { font-size: 64px; margin-bottom: 16px; opacity: 0.4; }
-    .empty-hint p { font-size: 16px; }
   </style>
 </head>
 <body>
@@ -411,23 +337,6 @@
 </header>
 
 <main>
-  <!-- Search -->
-  <div class="search-box">
-    <h2>Sök spelare</h2>
-    <div class="search-row">
-      <input type="text" id="playerInput" placeholder="SpelareNamn#TAG" autocomplete="off" />
-      <select id="regionSelect">
-        <option value="eu" selected>EU</option>
-        <option value="na">NA</option>
-        <option value="ap">AP</option>
-        <option value="kr">KR</option>
-        <option value="latam">LATAM</option>
-        <option value="br">BR</option>
-      </select>
-      <button id="searchBtn" onclick="search()">Sök</button>
-    </div>
-  </div>
-
   <!-- Error -->
   <div class="error-msg" id="errorMsg"></div>
 
@@ -486,14 +395,10 @@
     <div class="matches-list" id="matchesList"></div>
   </div>
 
-  <!-- Empty state -->
-  <div class="empty-hint" id="emptyState">
-    <div class="big-icon">🎯</div>
-    <p>Skriv in ett spelarnamn och klicka Sök</p>
-  </div>
 </main>
 
 <script>
+const PLAYER = { name: 'instalock', tag: 'tall', region: 'eu' };
 let rrChartInstance = null;
 
 function showError(msg) {
@@ -502,54 +407,28 @@ function showError(msg) {
   el.style.display = 'block';
 }
 
-function hideError() {
-  document.getElementById('errorMsg').style.display = 'none';
-}
-
 function setLoading(on) {
   document.getElementById('loading').style.display = on ? 'block' : 'none';
-  document.getElementById('searchBtn').disabled = on;
 }
 
-async function search() {
-  const raw = document.getElementById('playerInput').value.trim();
-  const region = document.getElementById('regionSelect').value;
-
-  if (!raw) return;
-
-  const parts = raw.split('#');
-  if (parts.length !== 2) {
-    showError('Ange spelarnamn i formatet  Namn#TAG');
-    return;
-  }
-
-  const [name, tag] = parts;
-  hideError();
+async function loadPlayer() {
   setLoading(true);
-  document.getElementById('results').style.display = 'none';
-  document.getElementById('emptyState').style.display = 'none';
-
   try {
-    const r = await fetch(`/api/player/${region}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`);
+    const r = await fetch(`/api/player/${PLAYER.region}/${encodeURIComponent(PLAYER.name)}/${encodeURIComponent(PLAYER.tag)}`);
     const json = await r.json();
     if (!r.ok) {
-      showError(json.error || `Fel ${r.status} — kontrollera att spelarnamnet stämmer.`);
-      document.getElementById('emptyState').style.display = 'block';
+      showError(json.error || `Fel ${r.status}`);
       return;
     }
-    renderResults(json, name, tag);
+    renderResults(json, PLAYER.name, PLAYER.tag);
   } catch (e) {
-    showError('Nätverksfel — försök igen.');
-    document.getElementById('emptyState').style.display = 'block';
+    showError('Kunde inte hämta data — försök ladda om sidan.');
   } finally {
     setLoading(false);
   }
 }
 
-// Enter key
-document.getElementById('playerInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter') search();
-});
+loadPlayer();
 
 function renderResults(data, name, tag) {
   const { account, mmr, mmrHistory, matches } = data;
