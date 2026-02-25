@@ -96,7 +96,28 @@ async function getPlayerData(region, name, tag) {
     ? { ...mmrRaw, data: { current: mmrRaw.data.current, peak: mmrRaw.data.peak } }
     : mmrRaw;
 
-  const data = { account, mmr, mmrHistory, matches };
+  // Trim matches — keep only what the frontend needs per match
+  const trimmedMatches = matches?.data?.map(m => ({
+    metadata: { map: m.metadata?.map, game_start: m.metadata?.game_start },
+    teams: m.teams,
+    players: {
+      all_players: (m.players?.all_players || []).map(p => ({
+        name: p.name,
+        tag: p.tag,
+        team: p.team,
+        character: p.character,
+        assets: { agent: { small: p.assets?.agent?.small } },
+        stats: {
+          kills: p.stats?.kills,
+          deaths: p.stats?.deaths,
+          assists: p.stats?.assists,
+          mmr_change_to_last_game: p.stats?.mmr_change_to_last_game,
+        },
+      })),
+    },
+  }));
+
+  const data = { account, mmr, mmrHistory, matches: trimmedMatches ? { data: trimmedMatches } : matches };
 
   memCache.set(cacheKey, { data, time: Date.now() });
   await supabaseSet(cacheKey, data);
