@@ -139,6 +139,34 @@ async function getPlayerData(region, name, tag) {
   // Map images for embedding per match
   const mapImages = await getMapImages();
 
+  // Aggregate weapon stats from round data (no extra API calls — rounds are in the matches response)
+  const weaponStatsMap = {};
+  for (const m of matches?.data || []) {
+    const myPuuid = (m.players || []).find(p =>
+      p.name?.toLowerCase() === name.toLowerCase() &&
+      p.tag?.toLowerCase() === tag.toLowerCase()
+    )?.puuid;
+    if (!myPuuid) continue;
+    for (const round of m.rounds || []) {
+      const ps = (round.stats || []).find(s => s.player?.puuid === myPuuid);
+      if (!ps) continue;
+      const w = ps.economy?.weapon;
+      if (!w || w.type !== 'Weapon') continue;
+      if (!weaponStatsMap[w.name]) {
+        weaponStatsMap[w.name] = {
+          id: w.id,
+          name: w.name,
+          rounds: 0,
+          kills: 0,
+          icon: `https://media.valorant-api.com/weapons/${w.id}/killfeedicon.png`,
+        };
+      }
+      weaponStatsMap[w.name].rounds++;
+      weaponStatsMap[w.name].kills += ps.stats?.kills ?? 0;
+    }
+  }
+  const weaponStats = Object.values(weaponStatsMap).sort((a, b) => b.rounds - a.rounds);
+
   // Trim matches — pre-process with v4 structure
   const trimmedMatches = matches?.data?.map(m => {
     const matchId = m.metadata?.match_id;
@@ -173,7 +201,7 @@ async function getPlayerData(region, name, tag) {
   // Leaderboard position (only for Immortal+)
   const leaderboardRank = leaderboard?.data?.leaderboardRank || null;
 
-  const data = { account, mmr, mmrHistory, matches: trimmedMatches, leaderboardRank };
+  const data = { account, mmr, mmrHistory, matches: trimmedMatches, leaderboardRank, weaponStats };
 
   memCache.set(cacheKey, { data, time: Date.now() });
   await supabaseSet(cacheKey, data);

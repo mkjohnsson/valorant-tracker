@@ -125,6 +125,24 @@
     .season-tier { font-size: 10px; font-weight: 600; color: var(--text); text-align: center; }
     .season-wins { font-size: 9px; color: var(--muted); margin-top: 1px; }
 
+    /* ── Weapon stats ── */
+    .weapon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+    .weapon-card {
+      background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
+      padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;
+      transition: border-color 0.15s;
+    }
+    .weapon-card:hover { border-color: var(--red); }
+    .weapon-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .weapon-name { font-size: 13px; font-weight: 700; }
+    .weapon-kr { font-size: 12px; font-weight: 700; color: var(--red); }
+    .weapon-icon-wrap { height: 22px; display: flex; align-items: center; }
+    .weapon-icon { height: 22px; object-fit: contain; max-width: 120px; filter: drop-shadow(0 0 4px rgba(255,255,255,0.15)); }
+    .weapon-bar-row { display: flex; align-items: center; gap: 8px; }
+    .weapon-bar-bg { flex: 1; height: 3px; background: var(--border); border-radius: 2px; }
+    .weapon-bar-fill { height: 3px; border-radius: 2px; background: var(--red); }
+    .weapon-meta { font-size: 11px; color: var(--muted); }
+
     /* ── Agent / Map stats ── */
     .agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; }
     .agent-card {
@@ -287,6 +305,10 @@
     <div class="section-label" id="seasonLabel" style="display:none">Säsongshistorik</div>
     <div class="season-scroll" id="seasonScroll" style="display:none"></div>
 
+    <!-- Weapon stats -->
+    <div class="section-label" id="weaponLabel" style="display:none">Vapenstats</div>
+    <div class="weapon-grid" id="weaponGrid"></div>
+
     <!-- Agent stats -->
     <div class="section-label">Agent-stats</div>
     <div class="agent-grid" id="agentGrid"></div>
@@ -348,7 +370,7 @@ checkLiveGame();
 setInterval(checkLiveGame, 60000);
 
 function renderResults(data, name, tag) {
-  const { account, mmr, mmrHistory, matches, leaderboardRank } = data;
+  const { account, mmr, mmrHistory, matches, leaderboardRank, weaponStats } = data;
   const matchList = Array.isArray(matches) ? matches : [];
   const played = matchList.filter(m => m.me);
 
@@ -434,6 +456,9 @@ function renderResults(data, name, tag) {
 
   // ── Season history ──
   renderSeasonHistory(mmr?.data?.seasonal || []);
+
+  // ── Weapon stats ──
+  renderWeaponStats(weaponStats || []);
 
   // ── Agent stats ──
   renderAgentStats(played);
@@ -531,6 +556,33 @@ function renderSeasonHistory(seasonal) {
   if (hasAny) {
     document.getElementById('seasonLabel').style.display = 'block';
     scroll.style.display = 'flex';
+  }
+}
+
+function renderWeaponStats(weapons) {
+  const grid = document.getElementById('weaponGrid');
+  grid.innerHTML = '';
+  if (!weapons.length) return;
+  document.getElementById('weaponLabel').style.display = 'block';
+  const maxRounds = weapons[0].rounds;
+  for (const w of weapons) {
+    const kr = w.rounds > 0 ? (w.kills / w.rounds).toFixed(2) : '0.00';
+    const barPct = Math.round((w.rounds / maxRounds) * 100);
+    const card = document.createElement('div');
+    card.className = 'weapon-card';
+    card.innerHTML = `
+      <div class="weapon-top">
+        <div class="weapon-name">${w.name}</div>
+        <div class="weapon-kr">${kr} K/R</div>
+      </div>
+      <div class="weapon-icon-wrap">
+        <img class="weapon-icon" src="${w.icon}" alt="${w.name}" onerror="this.style.display='none'" />
+      </div>
+      <div class="weapon-bar-row">
+        <div class="weapon-bar-bg"><div class="weapon-bar-fill" style="width:${barPct}%"></div></div>
+      </div>
+      <div class="weapon-meta">${w.rounds} rundor · ${w.kills} kills</div>`;
+    grid.appendChild(card);
   }
 }
 
