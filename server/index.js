@@ -158,7 +158,7 @@ async function getPlayerData(region, name, tag) {
           name: w.name,
           rounds: 0,
           kills: 0,
-          icon: `https://media.valorant-api.com/weapons/${w.id}/killfeedicon.png`,
+          icon: `https://media.valorant-api.com/weapons/${w.id}/displayicon.png`,
         };
       }
       weaponStatsMap[w.name].rounds++;
