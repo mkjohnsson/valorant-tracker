@@ -69,8 +69,8 @@ async function getPlayerData(region, name, tag) {
   const [accountRes, mmrRes, mmrHistoryRes, matchesRes] = await Promise.allSettled([
     fetch(`${HENRIK_BASE}/v2/account/${encodedName}/${encodedTag}`, { headers }),
     fetch(`${HENRIK_BASE}/v3/mmr/${region}/pc/${encodedName}/${encodedTag}`, { headers }),
-    fetch(`${HENRIK_BASE}/v2/mmr-history/${region}/pc/${encodedName}/${encodedTag}?size=15`, { headers }),
-    fetch(`${HENRIK_BASE}/v4/matches/${region}/pc/${encodedName}/${encodedTag}?mode=competitive&size=10`, { headers }),
+    fetch(`${HENRIK_BASE}/v2/mmr-history/${region}/pc/${encodedName}/${encodedTag}?size=20`, { headers }),
+    fetch(`${HENRIK_BASE}/v4/matches/${region}/pc/${encodedName}/${encodedTag}?mode=competitive&size=20`, { headers }),
   ]);
 
   // Parse each response
@@ -124,6 +124,10 @@ async function getPlayerData(region, name, tag) {
         kills: me.stats?.kills ?? 0,
         deaths: me.stats?.deaths ?? 0,
         assists: me.stats?.assists ?? 0,
+        score: me.stats?.score ?? 0,
+        headshots: me.stats?.headshots ?? 0,
+        bodyshots: me.stats?.bodyshots ?? 0,
+        legshots: me.stats?.legshots ?? 0,
       } : null,
     };
   }) || [];
