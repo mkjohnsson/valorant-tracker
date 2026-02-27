@@ -45,6 +45,27 @@ async function supabaseSet(key, data) {
 // In-memory cache: { [cacheKey]: { data, time } }
 const memCache = new Map();
 
+// Map images from valorant-api.com (cached in-memory indefinitely — changes rarely)
+let mapsCache = null;
+async function getMapImages() {
+  if (mapsCache) return mapsCache;
+  try {
+    const r = await fetch('https://valorant-api.com/v1/maps');
+    const json = await r.json();
+    const lookup = {};
+    for (const map of json?.data || []) {
+      if (map.displayName && map.displayName !== 'The Range') {
+        lookup[map.displayName] = {
+          splash: map.splash,
+          listViewIcon: map.listViewIcon,
+        };
+      }
+    }
+    mapsCache = lookup;
+  } catch { mapsCache = {}; }
+  return mapsCache;
+}
+
 async function getPlayerData(region, name, tag) {
   const cacheKey = `valorant_${region}_${name}_${tag}`.toLowerCase();
 
@@ -66,14 +87,15 @@ async function getPlayerData(region, name, tag) {
   const encodedName = encodeURIComponent(name);
   const encodedTag = encodeURIComponent(tag);
 
-  const [accountRes, mmrRes, mmrHistoryRes, matchesRes] = await Promise.allSettled([
+  const [accountRes, mmrRes, mmrHistoryRes, matchesRes, leaderboardRes] = await Promise.allSettled([
     fetch(`${HENRIK_BASE}/v2/account/${encodedName}/${encodedTag}`, { headers }),
     fetch(`${HENRIK_BASE}/v3/mmr/${region}/pc/${encodedName}/${encodedTag}`, { headers }),
     fetch(`${HENRIK_BASE}/v2/mmr-history/${region}/pc/${encodedName}/${encodedTag}?size=20`, { headers }),
     fetch(`${HENRIK_BASE}/v4/matches/${region}/pc/${encodedName}/${encodedTag}?mode=competitive&size=20`, { headers }),
+    fetch(`${HENRIK_BASE}/v2/leaderboard/${region}?name=${encodedName}&tag=${encodedTag}`, { headers }),
   ]);
 
-  // Parse each response
+  // Parse — throws on API error (for critical endpoints)
   async function parse(settled) {
     if (settled.status === 'rejected') return null;
     const r = settled.value;
@@ -84,16 +106,27 @@ async function getPlayerData(region, name, tag) {
     return r.json();
   }
 
-  const [account, mmrRaw, mmrHistory, matches] = await Promise.all([
+  // Safe parse — returns null on any error (for non-critical endpoints)
+  async function parseSafe(settled) {
+    if (settled.status === 'rejected') return null;
+    try {
+      const r = settled.value;
+      if (!r.ok) return null;
+      return r.json();
+    } catch { return null; }
+  }
+
+  const [account, mmrRaw, mmrHistory, matches, leaderboard] = await Promise.all([
     parse(accountRes),
     parse(mmrRes),
     parse(mmrHistoryRes),
     parse(matchesRes),
+    parseSafe(leaderboardRes),
   ]);
 
-  // Strip seasonal history from mmr — we only need current rank
+  // Keep current, peak AND seasonal history
   const mmr = mmrRaw?.data
-    ? { ...mmrRaw, data: { current: mmrRaw.data.current, peak: mmrRaw.data.peak } }
+    ? { ...mmrRaw, data: { current: mmrRaw.data.current, peak: mmrRaw.data.peak, seasonal: mmrRaw.data.seasonal } }
     : mmrRaw;
 
   // Build RR-change lookup from mmrHistory (match_id → last_change)
@@ -103,7 +136,10 @@ async function getPlayerData(region, name, tag) {
     if (entry.match_id) rrByMatchId[entry.match_id] = entry.last_change;
   }
 
-  // Trim matches — pre-process with v4 structure (players is a flat list, not {all_players})
+  // Map images for embedding per match
+  const mapImages = await getMapImages();
+
+  // Trim matches — pre-process with v4 structure
   const trimmedMatches = matches?.data?.map(m => {
     const matchId = m.metadata?.match_id;
     const me = (m.players || []).find(p =>
@@ -111,8 +147,10 @@ async function getPlayerData(region, name, tag) {
       p.tag?.toLowerCase() === tag.toLowerCase()
     );
     const myTeam = m.teams?.find(t => t.team_id === me?.team_id);
+    const mapName = m.metadata?.map?.name || String(m.metadata?.map || '?');
     return {
-      map: m.metadata?.map?.name || String(m.metadata?.map || '?'),
+      map: mapName,
+      map_image: mapImages[mapName]?.listViewIcon || null,
       started_at: m.metadata?.started_at,
       won: myTeam?.won ?? false,
       rr_change: rrByMatchId[matchId] ?? null,
@@ -132,7 +170,10 @@ async function getPlayerData(region, name, tag) {
     };
   }) || [];
 
-  const data = { account, mmr, mmrHistory, matches: trimmedMatches };
+  // Leaderboard position (only for Immortal+)
+  const leaderboardRank = leaderboard?.data?.leaderboardRank || null;
+
+  const data = { account, mmr, mmrHistory, matches: trimmedMatches, leaderboardRank };
 
   memCache.set(cacheKey, { data, time: Date.now() });
   await supabaseSet(cacheKey, data);
@@ -149,6 +190,29 @@ app.get('/api/player/:region/:name/:tag', async (req, res) => {
     const status = e.status || 500;
     res.status(status).json({ error: e.message });
   }
+});
+
+// Live match detection (not cached — must be real-time)
+app.get('/api/live/:region/:name/:tag', async (req, res) => {
+  const { region, name, tag } = req.params;
+  const apiKey = process.env.VALORANT_API_KEY;
+  const headers = apiKey ? { Authorization: apiKey } : {};
+  try {
+    const r = await fetch(
+      `${HENRIK_BASE}/v1/lifecycle/player/${region}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`,
+      { headers, signal: AbortSignal.timeout(5000) }
+    );
+    if (!r.ok) return res.json({ inGame: false });
+    const data = await r.json();
+    res.json({ inGame: true, data });
+  } catch {
+    res.json({ inGame: false });
+  }
+});
+
+// Map images endpoint
+app.get('/api/maps', async (_req, res) => {
+  res.json(await getMapImages());
 });
 
 const PORT = process.env.PORT || 5008;
