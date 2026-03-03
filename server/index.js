@@ -1,9 +1,11 @@
 import express from 'express';
+import helmet from 'helmet';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.static(join(__dirname, '../public')));
 
 const HENRIK_BASE = 'https://api.henrikdev.xyz/valorant';
